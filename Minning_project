@@ -1,0 +1,374 @@
+#Well collect tweets from a popular account and specific words or communties
+#clean by changing case sensitvity, take out urls, get out stop words
+#filter tweets
+#perform visualization to draw conclusion
+#sentiment analysis
+#General:
+import tweepy               # To consume Twitter's API
+import pandas as pd         # To handle data
+import numpy as np          # For number computing
+
+# For plotting and visualization
+from IPython.display import display
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+#Twitter Keys
+access_token = '1255366989507432448-9VZ2smShwMEyvCK7U30KS1NPP2XgeL'
+access_secret = 'VQYWRFRjJv5pXYrqT3E1eKIAHwrNZkKIaF0GBvZprtvJA'
+consumer_key = 'LVdIRwi9MYBwhBFuoqAb4Q9gu'
+consumer_secrect = 'B1zIiWDRzX0ZaRwp4xuLZc23X0KNbGCJevxSl6s8TVMyfNKNZI'
+
+# API's setup:
+def twitter_setup():
+    """
+    Utility function to setup the Twitter's API
+    with our access key provided.
+    """
+
+    # Authentication and access using keys;
+    auth = tweepy.OAuthHandler(consumer_key, consumer_secrect)
+    auth.set_access_token(access_token, access_secret)
+
+    # Return API with authentication:
+    api = tweepy.API(auth)
+    return api
+
+# Well create an extractor object:
+extractor = twitter_setup()
+
+# Well create a tweet list as follows
+tweets = extractor.user_timeline(screen_name="elonmusk", count=200)
+print("Number of tweets extracted: {}.\n".format(len(tweets)))
+
+# We print the most recent 10 tweets:
+print("10 recent tweets\n")
+for tweet in tweets[:10]:
+    print(tweet.text)
+    print()
+
+# Well create a pandas dataframe as follows:
+data = pd.DataFrame(data=[tweet.text for tweet in tweets], columns=['Tweets'])
+
+# Well display the first 10 elements of the dataframe:
+display(data.head(10))
+
+# Internal methods of a single tweet object:
+print(dir(tweets[0]))
+
+# Well print info from the first tweet:
+print(tweets[0].id)
+print(tweets[0].created_at)
+print(tweets[0].source)
+print(tweets[0].favorite_count)
+print(tweets[0].retweet_count)
+print(tweets[0].geo)
+print(tweets[0].coordinates)
+print(tweets[0].entities)
+
+#Adding relevant info to our dataframe
+# Well add relevant data:
+data['len'] = np.array([len(tweet.text)for tweet in tweets])
+data['ID'] = np.array([tweet.id for tweet in tweets])
+data['Date'] = np.array([tweet.created_at for tweet in tweets])
+data['Source'] = np.array([tweet.source for tweet in tweets])
+data['Likes'] = np.array([tweet.favorite_count for tweet in tweets])
+data['RTs'] = np.array([tweet.retweet_count for tweet in tweets])
+
+# Display of first 20 elemnts from datafram:
+display(data.head(20))
+
+#Visualization and basic statistics Average and popularity
+#Well extract the mean of lenths:
+mean = np.mean(data['len'])
+
+print("The lenght's average in tweets: {}".format(mean))
+
+#Well extract the tweet with more FAVs and more RTs:
+fav_max = np.max(data['Likes'])
+rt_max = np.max(data['RTs'])
+
+fav = data[data.Likes == fav_max].index[0]
+rt = data[data.RTs == rt_max].index[0]
+
+#Max FAVs:
+print("The tweet with more likes is: \n{}".format(data['Tweets'][fav]))
+print("Number of likes: {}".format(fav_max))
+print("{} characters.\n".format(data['len'][fav]))
+
+#Max RTs:
+print("The tweet with more retweets is: \n{}".format(data['Tweets'][rt]))
+print("Number of retweets: {}".format(rt_max))
+print("{} characters.\n".format(data['len'][rt]))
+
+#Well create time series for data:
+tlen = pd.Series(data=data['len'].values, index=data['Date'])
+tfav = pd.Series(data=data['Likes'].values, index=data['Date'])
+tret = pd.Series(data=data['RTs'].values, index=data['Date'])
+
+#Lengths along time:
+tlen.plot(figsize=(16,4), color='g')
+
+#Likes vs retweets visualization:
+tfav.plot(figsize=(16,4), label="Likes", legend=True)
+tret.plot(figsize=(16,4), label="Retweets", legend=True);
+
+#Well obtain all posssible sources:
+sources = []
+for source in data['Source']:
+    if source not in sources:
+        sources.append(source)
+
+#Well print source list list:
+print("Creation of content sources:")
+for source in sources:
+    print("* {}".format(source))
+#Well create a piechart for each source
+percent = np.zeros(len(sources))
+
+for source in data ['Source']:
+    for index in range(len(sources)):
+        percent[index] += 1
+        pass
+percent /=100
+
+pie_chart = pd.Series(percent, index=sources, name='Sources')
+pie_chart.plot.pie(fontsize=11, autopct='%.2f', figsize=(6,6))
+
+#Importing textblob,
+#textblob will allow us to do sentiment analysis in a very simple way.
+#We will also use the re library from Python, which is used to work with regular expressions.
+from textblob import TextBlob
+import re
+def clean_tweet(tweet):
+    '''
+    Utility function to clean the text in a tweet by removing
+    links and special characrers using regex.
+    '''
+    return ' '.join(re.sub("(@)[A-Za-z0-9]+|([^0-9A-Za-z \t])|(\w+:\/\/\S+)", "", tweet).split())
+
+
+def analize_sentiment(tweet):
+    '''
+    Utility function to classify the polarity of tweet
+    using textblob
+    '''
+    analysis = TextBlob(clean_tweet(tweet))
+    if analysis.sentiment.polarity > 0:
+        return 1
+    elif analysis.sentiment.polarity == 0:
+        return 0
+    else:
+        return -1
+
+# Well create a column with the result of the analysis:
+data['SA'] = np.array([ analize_sentiment(tweet) for tweet in data['Tweets']])
+
+# Well display the update dataframe with new column:
+display(data.head(20))
+
+#Well anazlyz the results to have a simple way to verify the results,
+#we will count the number of neutrals, positives, and negatives and extract the %
+
+# Well construct list with classified tweets:
+pos_tweets = [ tweet for index, tweet in enumerate(data['Tweets']) if data['SA'][index] > 0]
+neu_tweets = [ tweet for index, tweet in enumerate(data['Tweets']) if data['SA'][index] == 0]
+neg_tweets = [ tweet for index, tweet in enumerate(data['Tweets']) if data['SA'][index] < 0]
+#Now that we have the lists, we just print the percentage
+
+# Well print percentages:
+
+print("Percentage of positive tweets: {}%".format(len(pos_tweets)*100/len(data['Tweets'])))
+print("Percentage of neutral tweets: {}%".format(len(neu_tweets)*100/len(data['Tweets'])))
+print("Percentage de negative tweets: {}%".format(len(neg_tweets)*100/len(data['Tweets'])))
+
+
+#import os to deal with files on the operating system
+import os
+
+#import pandas to deal with dataframes and more
+import pandas as pd
+
+#import visualization libraries
+import matplotlib.pyplot as plt
+import seaborn as sns
+import itertools
+
+#import collections to deal with collections
+import collections
+
+#import tweepy to deal with the tweets
+import tweepy as tweepy
+
+#import nltk to deal with natural processing language
+#we will study that in details in our Natural Processing course in AI for Business certificate
+import nltk
+from nltk.corpus import stopwords
+import re
+import networkx
+
+#to filter warnings
+
+import warnings
+warnings.filterwarnings("ignore")
+
+#setting some configurations for seaborn related plots
+#setting the background style and font scale
+#those are optional but makes the plots look nicer
+sns.set(font_scale=1.5)
+sns.set_style("whitegrid")
+
+#KEYS
+access_token = '1255366989507432448-9VZ2smShwMEyvCK7U30KS1NPP2XgeL'
+access_secret = 'VQYWRFRjJv5pXYrqT3E1eKIAHwrNZkKIaF0GBvZprtvJA'
+consumer_key = 'LVdIRwi9MYBwhBFuoqAb4Q9gu'
+consumer_secrect = 'B1zIiWDRzX0ZaRwp4xuLZc23X0KNbGCJevxSl6s8TVMyfNKNZI'
+
+auth = tweepy.OAuthHandler(consumer_key, consumer_secrect)
+auth.set_access_token(access_token, access_secret)
+
+
+twitter_api = tweepy.API(auth, wait_on_rate_limit=True)
+
+#Well search twiiter for certain words
+search_term = "#flatearth -filter:retweets"
+
+tweets = tweepy.Cursor(twitter_api.search,
+                   q=search_term,
+                   lang="en",
+                   since='2018-11-01').items(1000)
+
+all_tweets = [tweet.text for tweet in tweets]
+
+all_tweets[:5]
+
+#Now lets remove the urls
+def remove_url(txt):
+    return " ".join(re.sub("([^0-9A-Za-z \t])|(\w+:\/\/\S+)", "", txt).split())
+
+#After defining the function,
+#you can call it in a list comprehension to create a list to clean tweets
+all_tweets_no_urls = [remove_url(tweet) for tweet in all_tweets]
+all_tweets_no_urls[:5]
+
+# Split the words from one tweet into unique elements
+all_tweets_no_urls[0].lower().split()
+
+# Create a list of lists containing lowercase words for each tweet
+words_in_tweet = [tweet.lower().split() for tweet in all_tweets_no_urls]
+words_in_tweet[:2]
+
+# List of all words across tweets
+all_words_no_urls = list(itertools.chain(*words_in_tweet))
+
+# Create counter
+counts_no_urls = collections.Counter(all_words_no_urls)
+
+counts_no_urls.most_common(15)
+
+#Based on the counter,you can creat a Pandas Dataframe
+#for anaysis and plot that including only the top 15 common words
+
+clean_tweets_no_urls = pd.DataFrame(counts_no_urls.most_common(15),
+                             columns=['words', 'count'])
+
+#Using Pandas Dataframe, you can create a hortizontal bar graph
+#and graph the top 15 most common words in the tweets shown below
+clean_tweets_no_urls.head()
+
+fig, ax = plt.subplots(figsize=(8, 8))
+
+# Plot horizontal bar graph
+clean_tweets_no_urls.sort_values(by='count').plot.barh(x='words',
+                      y='count',
+                      ax=ax,
+                      color="blue")
+
+ax.set_title("Common Words Found in Tweets (Including All Words)")
+
+plt.show()
+
+#Remove Stopwords with ntlk
+
+nltk.download('stopwords')
+
+stop_words = set(stopwords.words('english'))
+
+# View a few words from the set
+list(stop_words)[0:10]
+
+words_in_tweet[0]
+
+# Remove stop words from each tweet list of words
+tweets_nsw = [[word for word in tweet_words if not word in stop_words]
+              for tweet_words in words_in_tweet]
+
+tweets_nsw[0]
+
+all_words_nsw = list(itertools.chain(*tweets_nsw))
+
+counts_nsw = collections.Counter(all_words_nsw)
+
+counts_nsw.most_common(15)
+
+#Then, you can create the Pandas Dataframe and plot the words
+#frequinces without the stop words.
+
+clean_tweets_nsw = pd.DataFrame(counts_nsw.most_common(15),
+                             columns=['words', 'count'])
+
+fig, ax = plt.subplots(figsize=(8, 8))
+
+# Plot horizontal bar graph
+clean_tweets_nsw.sort_values(by='count').plot.barh(x='words',
+                      y='count',
+                      ax=ax,
+                      color="blue")
+
+ax.set_title("Common Words Found in Tweets (Without Stop Words)")
+
+plt.show()
+
+#Remove Collection Words
+
+collection_words = ['flatearth', 'flat', 'earth']
+tweets_nsw_nc = [[w for w in word if not w in collection_words]
+                 for word in tweets_nsw]
+tweets_nsw[0]
+tweets_nsw_nc[0]
+
+#Calculate and Plot Word Frequncey of Clean Tweets
+
+# Flatten list of words in clean tweets
+all_words_nsw_nc = list(itertools.chain(*tweets_nsw_nc))
+
+# Create counter of words in clean tweets
+counts_nsw_nc = collections.Counter(all_words_nsw_nc)
+
+counts_nsw_nc.most_common(15)
+
+#To find out the number of unique words across all of the tweets you can
+#the len() of the objects counts that you just created.
+
+len(counts_nsw_nc)
+
+#You can create the Pandas Dataframe of the words and theier counts and plot
+#the top 15 most common words from the clean tweets(urls,stopwords,collectionwords)
+
+clean_tweets_ncw = pd.DataFrame(counts_nsw_nc.most_common(15),
+                             columns=['words', 'count'])
+clean_tweets_ncw.head()
+
+fig, ax = plt.subplots(figsize=(8, 8))
+
+# Plot horizontal bar graph
+clean_tweets_ncw.sort_values(by='count').plot.barh(x='words',
+                      y='count',
+                      ax=ax,
+                      color="blue")
+
+ax.set_title("Common Words Found in Tweets (Without Stop or Collection Words)")
+
+plt.show()
+
+#
